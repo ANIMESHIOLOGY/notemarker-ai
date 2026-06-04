@@ -25,7 +25,7 @@ const UNIX_CHROME_PATHS = [
 // deployed. Pass the GitHub release URL instead — chromium downloads to /tmp on
 // cold start and reuses it on warm starts.
 const CHROMIUM_PACK_URL =
-  'https://github.com/Sparticuz/chromium/releases/download/v149.0.0/chromium-v149.0.0-pack.tar';
+  'https://github.com/Sparticuz/chromium/releases/download/v149.0.0/chromium-v149.0.0-pack.x64.tar';
 
 async function getExecutablePath(): Promise<string> {
   if (process.env.CHROME_PATH && existsSync(process.env.CHROME_PATH)) {
