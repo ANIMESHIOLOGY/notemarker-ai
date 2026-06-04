@@ -331,8 +331,17 @@ export default function HomePage() {
                           isUser ? 'border-violet-100 bg-violet-50/40' : 'border-slate-100'
                         )}
                       >
-                        <div className="ml-10 pt-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-                          {msg.content}
+                        <div className="ml-10 pt-3">
+                          {msg.contentHtml ? (
+                            <div
+                              className="chat-content"
+                              dangerouslySetInnerHTML={{ __html: msg.contentHtml }}
+                            />
+                          ) : (
+                            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                              {msg.content}
+                            </p>
+                          )}
                         </div>
                       </div>
                     )}

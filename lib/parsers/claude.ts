@@ -5,9 +5,105 @@ export async function parseClaude(page: Page): Promise<{ title: string; messages
   await page.waitForSelector('main, [role="main"], body', { timeout: 15000 }).catch(() => {});
 
   const data = await page.evaluate(() => {
+    const SKIP_TAGS = new Set(['button', 'svg', 'path', 'use', 'circle', 'script', 'style', 'noscript']);
+    const INLINE_TAGS = new Set(['strong', 'b', 'em', 'i', 'code', 'a', 'span', 'mark', 'sub', 'sup']);
+
+    function escHtml(s: string): string {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function extractCodeText(el: Element): string {
+      return el.innerHTML
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"')
+        .trim();
+    }
+
+    function inlineHtml(el: Element): string {
+      let out = '';
+      el.childNodes.forEach((node) => {
+        if (node.nodeType === 3) { out += escHtml(node.textContent ?? ''); return; }
+        const child = node as Element;
+        const tag = child.tagName?.toLowerCase();
+        if (!tag || SKIP_TAGS.has(tag)) return;
+        const t = child.textContent ?? '';
+        if (tag === 'strong' || tag === 'b') out += `<strong>${escHtml(t)}</strong>`;
+        else if (tag === 'em' || tag === 'i') out += `<em>${escHtml(t)}</em>`;
+        else if (tag === 'code') out += `<code>${escHtml(t)}</code>`;
+        else if (tag === 'br') out += '<br>';
+        else out += escHtml(t);
+      });
+      return out;
+    }
+
+    function walk(node: Node, out: string[]): void {
+      if (node.nodeType === 3) {
+        const t = node.textContent?.trim() ?? '';
+        if (t) out.push(`<p>${escHtml(t)}</p>`);
+        return;
+      }
+
+      const el = node as Element;
+      const tag = el.tagName?.toLowerCase();
+
+      if (!tag || SKIP_TAGS.has(tag)) return;
+      if (el.getAttribute('aria-hidden') === 'true') return;
+
+      switch (tag) {
+        case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6': {
+          const t = el.textContent?.trim();
+          if (t) out.push(`<${tag}>${escHtml(t)}</${tag}>`);
+          return;
+        }
+        case 'p': {
+          const inner = inlineHtml(el);
+          if (inner.trim()) out.push(`<p>${inner}</p>`);
+          return;
+        }
+        case 'pre': {
+          const code = extractCodeText(el);
+          if (code) out.push(`<pre><code>${escHtml(code)}</code></pre>`);
+          return;
+        }
+        case 'ul': case 'ol': {
+          const items = Array.from(el.querySelectorAll(':scope > li, li'))
+            .filter((li, i, arr) => !arr.slice(0, i).some(prev => prev.contains(li)))
+            .map(li => `<li>${escHtml(li.textContent?.trim() ?? '')}</li>`)
+            .join('');
+          if (items) out.push(`<${tag}>${items}</${tag}>`);
+          return;
+        }
+        case 'li':
+          return;
+        case 'blockquote': {
+          const t = el.textContent?.trim();
+          if (t) out.push(`<blockquote>${escHtml(t)}</blockquote>`);
+          return;
+        }
+        case 'hr':
+          out.push('<hr>');
+          return;
+        case 'br':
+          return;
+        default:
+          if (INLINE_TAGS.has(tag)) {
+            const t = el.textContent?.trim();
+            if (t) out.push(`<p>${escHtml(t)}</p>`);
+          } else {
+            el.childNodes.forEach((child) => walk(child, out));
+          }
+      }
+    }
+
+    function extractContent(el: Element): string {
+      const parts: string[] = [];
+      el.childNodes.forEach((node) => walk(node, parts));
+      return parts.join('\n');
+    }
+
     const messages: { role: string; contentHtml: string; content: string }[] = [];
 
-    // Primary: data-testid selectors used by Claude
     const humanTurns = document.querySelectorAll(
       '[data-testid="human-turn"], [data-testid="human_message"]'
     );
@@ -16,7 +112,6 @@ export async function parseClaude(page: Page): Promise<{ title: string; messages
     );
 
     if (humanTurns.length > 0 || aiTurns.length > 0) {
-      // Build ordered list from DOM position
       const allItems: { el: Element; role: 'user' | 'assistant' }[] = [];
       humanTurns.forEach((el) => allItems.push({ el, role: 'user' }));
       aiTurns.forEach((el) => allItems.push({ el, role: 'assistant' }));
@@ -30,19 +125,23 @@ export async function parseClaude(page: Page): Promise<{ title: string; messages
         const contentEl =
           el.querySelector('.prose, .markdown, [class*="prose"], [class*="content"]') || el;
         const content = contentEl.textContent?.trim() ?? '';
-        if (content) messages.push({ role, contentHtml: contentEl.innerHTML, content });
+        if (!content) return;
+        const contentHtml = extractContent(contentEl);
+        messages.push({ role, contentHtml, content });
       });
     }
 
     // Fallback: class-name heuristics
     if (messages.length === 0) {
-      const candidates = document.querySelectorAll('[class*="Human"], [class*="Assistant"], [class*="human"], [class*="assistant"]');
+      const candidates = document.querySelectorAll(
+        '[class*="Human"], [class*="Assistant"], [class*="human"], [class*="assistant"]'
+      );
       candidates.forEach((el) => {
         const cls = el.className?.toLowerCase?.() ?? '';
         const role = cls.includes('human') ? 'user' : cls.includes('assistant') ? 'assistant' : null;
         if (!role) return;
         const content = el.textContent?.trim() ?? '';
-        if (content) messages.push({ role, contentHtml: el.innerHTML, content });
+        if (content) messages.push({ role, contentHtml: extractContent(el), content });
       });
     }
 

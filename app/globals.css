@@ -128,3 +128,60 @@
     @apply font-sans;
   }
 }
+
+/* Chat message content renderer — mirrors PDF styling */
+.chat-content {
+  font-size: 0.875rem;
+  line-height: 1.75;
+  color: #374151;
+}
+.chat-content h1 { font-size: 1.25rem; font-weight: 700; color: #111827; margin: 1rem 0 0.5rem; }
+.chat-content h2 { font-size: 1.1rem; font-weight: 700; color: #111827; margin: 0.875rem 0 0.4rem; }
+.chat-content h3,
+.chat-content h4,
+.chat-content h5,
+.chat-content h6 { font-size: 0.9375rem; font-weight: 600; color: #374151; margin: 0.75rem 0 0.35rem; }
+.chat-content p { margin-bottom: 0.5rem; }
+.chat-content p:last-child { margin-bottom: 0; }
+.chat-content strong,
+.chat-content b { font-weight: 600; color: #111827; }
+.chat-content em,
+.chat-content i { font-style: italic; }
+.chat-content ul { list-style: disc; padding-left: 1.25rem; margin: 0.4rem 0; }
+.chat-content ol { list-style: decimal; padding-left: 1.25rem; margin: 0.4rem 0; }
+.chat-content li { margin-bottom: 0.2rem; }
+.chat-content pre {
+  background: #1e1e2e;
+  border-radius: 6px;
+  padding: 0.875rem;
+  margin: 0.6rem 0;
+  overflow-x: auto;
+}
+.chat-content pre code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8125rem;
+  color: #cdd6f4;
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+.chat-content code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8125rem;
+  background: #f3f4f6;
+  color: #c026d3;
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+.chat-content blockquote {
+  border-left: 3px solid #7c3aed;
+  padding-left: 0.875rem;
+  margin: 0.5rem 0;
+  color: #6b7280;
+  font-style: italic;
+}
+.chat-content hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 0.75rem 0;
+}
