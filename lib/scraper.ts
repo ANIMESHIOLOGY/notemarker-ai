@@ -70,8 +70,9 @@ export async function scrapeChat(url: string): Promise<ChatDocument> {
 
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    // Extra wait for JS-rendered content to settle
-    await new Promise((r) => setTimeout(r, 2500));
+    // Claude SPAs need more time to hydrate
+    const waitMs = platform === 'claude' ? 5000 : 2500;
+    await new Promise((r) => setTimeout(r, waitMs));
 
     const parsed =
       platform === 'chatgpt' ? await parseChatGPT(page) : await parseClaude(page);

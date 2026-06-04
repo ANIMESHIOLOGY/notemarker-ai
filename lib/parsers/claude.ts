@@ -4,6 +4,12 @@ import type { ChatMessage } from '@/types/chat';
 export async function parseClaude(page: Page): Promise<{ title: string; messages: ChatMessage[] }> {
   await page.waitForSelector('main, [role="main"], body', { timeout: 15000 }).catch(() => {});
 
+  // Wait for any conversation content to appear
+  await page.waitForSelector(
+    '[data-testid="human-turn"], [data-testid="ai-turn"], article, [class*="ConversationTurn"], [class*="HumanTurn"]',
+    { timeout: 8000 }
+  ).catch(() => {});
+
   const data = await page.evaluate(() => {
     const SKIP_TAGS = new Set(['button', 'svg', 'path', 'use', 'circle', 'script', 'style', 'noscript']);
     const INLINE_TAGS = new Set(['strong', 'b', 'em', 'i', 'code', 'a', 'span', 'mark', 'sub', 'sup']);
@@ -43,13 +49,10 @@ export async function parseClaude(page: Page): Promise<{ title: string; messages
         if (t) out.push(`<p>${escHtml(t)}</p>`);
         return;
       }
-
       const el = node as Element;
       const tag = el.tagName?.toLowerCase();
-
       if (!tag || SKIP_TAGS.has(tag)) return;
       if (el.getAttribute('aria-hidden') === 'true') return;
-
       switch (tag) {
         case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6': {
           const t = el.textContent?.trim();
@@ -74,18 +77,14 @@ export async function parseClaude(page: Page): Promise<{ title: string; messages
           if (items) out.push(`<${tag}>${items}</${tag}>`);
           return;
         }
-        case 'li':
-          return;
+        case 'li': return;
         case 'blockquote': {
           const t = el.textContent?.trim();
           if (t) out.push(`<blockquote>${escHtml(t)}</blockquote>`);
           return;
         }
-        case 'hr':
-          out.push('<hr>');
-          return;
-        case 'br':
-          return;
+        case 'hr': out.push('<hr>'); return;
+        case 'br': return;
         default:
           if (INLINE_TAGS.has(tag)) {
             const t = el.textContent?.trim();
@@ -102,6 +101,14 @@ export async function parseClaude(page: Page): Promise<{ title: string; messages
       return parts.join('\n');
     }
 
+    // ── Debug info ────────────────────────────────────────────────
+    const allTestIds = Array.from(document.querySelectorAll('[data-testid]'))
+      .map(el => el.getAttribute('data-testid'))
+      .filter(Boolean);
+
+    const bodySnippet = document.body?.innerHTML?.slice(0, 3000) ?? '';
+
+    // ── Strategy 1: canonical data-testid selectors ────────────────
     const messages: { role: string; contentHtml: string; content: string }[] = [];
 
     const humanTurns = document.querySelectorAll(
@@ -115,39 +122,66 @@ export async function parseClaude(page: Page): Promise<{ title: string; messages
       const allItems: { el: Element; role: 'user' | 'assistant' }[] = [];
       humanTurns.forEach((el) => allItems.push({ el, role: 'user' }));
       aiTurns.forEach((el) => allItems.push({ el, role: 'assistant' }));
-
-      allItems.sort((a, b) => {
-        const pos = a.el.compareDocumentPosition(b.el);
-        return pos & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
-      });
-
+      allItems.sort((a, b) =>
+        a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
+      );
       allItems.forEach(({ el, role }) => {
-        const contentEl =
-          el.querySelector('.prose, .markdown, [class*="prose"], [class*="content"]') || el;
+        const contentEl = el.querySelector('.prose, .markdown, [class*="prose"]') || el;
         const content = contentEl.textContent?.trim() ?? '';
-        if (!content) return;
-        const contentHtml = extractContent(contentEl);
-        messages.push({ role, contentHtml, content });
+        if (content) messages.push({ role, contentHtml: extractContent(contentEl), content });
       });
     }
 
-    // Fallback: class-name heuristics
+    // ── Strategy 2: partial data-testid match ─────────────────────
     if (messages.length === 0) {
-      const candidates = document.querySelectorAll(
-        '[class*="Human"], [class*="Assistant"], [class*="human"], [class*="assistant"]'
+      const allTestIdEls = Array.from(document.querySelectorAll('[data-testid]'));
+      const found: { el: Element; role: 'user' | 'assistant' }[] = [];
+      allTestIdEls.forEach((el) => {
+        const tid = (el.getAttribute('data-testid') ?? '').toLowerCase();
+        if (tid.includes('human') || tid.includes('user')) found.push({ el, role: 'user' });
+        else if (tid.includes('ai') || tid.includes('assistant')) found.push({ el, role: 'assistant' });
+      });
+      found.sort((a, b) =>
+        a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
       );
-      candidates.forEach((el) => {
-        const cls = el.className?.toLowerCase?.() ?? '';
-        const role = cls.includes('human') ? 'user' : cls.includes('assistant') ? 'assistant' : null;
-        if (!role) return;
+      found.forEach(({ el, role }) => {
         const content = el.textContent?.trim() ?? '';
         if (content) messages.push({ role, contentHtml: extractContent(el), content });
       });
     }
 
-    const title = document.title?.replace(' - Claude', '').trim() || 'Claude Conversation';
-    return { title, messages };
+    // ── Strategy 3: article elements ──────────────────────────────
+    if (messages.length === 0) {
+      document.querySelectorAll('article').forEach((article) => {
+        const content = article.textContent?.trim() ?? '';
+        if (!content) return;
+        const cls = (article.className ?? '').toLowerCase();
+        const role = cls.includes('human') || cls.includes('user') ? 'user' : 'assistant';
+        messages.push({ role, contentHtml: extractContent(article), content });
+      });
+    }
+
+    // ── Strategy 4: class name heuristics ────────────────────────
+    if (messages.length === 0) {
+      const candidates = document.querySelectorAll(
+        '[class*="Human"], [class*="human"], [class*="Assistant"], [class*="assistant"], [class*="message"], [class*="Message"]'
+      );
+      candidates.forEach((el) => {
+        const cls = (el.className ?? '').toLowerCase();
+        const role = cls.includes('human') || cls.includes('user') ? 'user' : 'assistant';
+        const content = el.textContent?.trim() ?? '';
+        if (content.length > 10) messages.push({ role, contentHtml: extractContent(el), content });
+      });
+    }
+
+    const title = document.title?.replace(/ - Claude$/i, '').trim() || 'Claude Conversation';
+    return { title, messages, debug: { allTestIds, bodySnippet } };
   });
+
+  // Log to Vercel for debugging
+  console.log('[claude] testIds on page:', JSON.stringify(data.debug.allTestIds));
+  console.log('[claude] body snippet:', data.debug.bodySnippet);
+  console.log('[claude] messages found:', data.messages.length);
 
   return {
     title: data.title,
