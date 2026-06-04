@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +41,20 @@ export default function HomePage() {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [copied, setCopied] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [slowLoad, setSlowLoad] = useState(false);
+  const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (stage === 'scraping') {
+      slowTimerRef.current = setTimeout(() => setSlowLoad(true), 15000);
+    } else {
+      if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
+      setSlowLoad(false);
+    }
+    return () => {
+      if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
+    };
+  }, [stage]);
 
   async function handleExtract() {
     if (!url.trim()) return;
@@ -214,7 +228,20 @@ export default function HomePage() {
               <span className="text-sm font-medium text-slate-700">{STAGES[stageIdx]}</span>
             </div>
             <Progress value={progress} className="h-1.5" />
-            <p className="text-xs text-slate-400 mt-3">This may take 15–30 seconds…</p>
+            {slowLoad ? (
+              <div className="mt-3 flex items-start gap-2 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2.5">
+                <span className="text-violet-500 mt-0.5">⏳</span>
+                <div>
+                  <p className="text-xs font-medium text-violet-700">Cold start in progress</p>
+                  <p className="text-xs text-violet-500 mt-0.5">
+                    The browser engine is spinning up for the first time — this takes ~60s once.
+                    Future requests will be much faster.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 mt-3">This may take 15–30 seconds…</p>
+            )}
           </div>
         )}
 
@@ -356,7 +383,17 @@ export default function HomePage() {
       <footer className="border-t border-slate-100 mt-16 py-6">
         <div className="max-w-4xl mx-auto px-6 flex items-center justify-between text-xs text-slate-400">
           <span>NoteMarker AI — open source</span>
-          <span>Supports ChatGPT &amp; Claude share links</span>
+          <span>
+            Built by{' '}
+            <a
+              href="https://github.com/ANIMESHIOLOGY"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-violet-500 hover:text-violet-700 transition-colors"
+            >
+              Animeshiology
+            </a>
+          </span>
         </div>
       </footer>
     </div>
