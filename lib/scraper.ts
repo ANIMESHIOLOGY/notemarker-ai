@@ -1,5 +1,8 @@
-import puppeteer from 'puppeteer-core';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import chromium from '@sparticuz/chromium';
+
+puppeteer.use(StealthPlugin());
 import { existsSync } from 'fs';
 import type { ChatDocument } from '@/types/chat';
 import { parseChatGPT } from './parsers/chatgpt';
@@ -70,9 +73,22 @@ export async function scrapeChat(url: string): Promise<ChatDocument> {
 
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    // Claude SPAs need more time to hydrate
-    const waitMs = platform === 'claude' ? 5000 : 2500;
-    await new Promise((r) => setTimeout(r, waitMs));
+    if (platform === 'claude') {
+      // Wait for Cloudflare challenge to resolve then for conversation to appear
+      await page.waitForFunction(
+        () => {
+          const isCfChallenge = document.querySelector('#challenge-success-text, #cf-error-details');
+          const hasContent = document.querySelectorAll('[data-testid="human-turn"], [data-testid="ai-turn"], article').length > 0;
+          // If no CF challenge page at all, or content already loaded — proceed
+          return !document.querySelector('.ch-title-zone') || hasContent;
+        },
+        { timeout: 25000, polling: 1000 }
+      ).catch(() => {});
+      // Extra settle time after CF passes
+      await new Promise((r) => setTimeout(r, 3000));
+    } else {
+      await new Promise((r) => setTimeout(r, 2500));
+    }
 
     const parsed =
       platform === 'chatgpt' ? await parseChatGPT(page) : await parseClaude(page);
