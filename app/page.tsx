@@ -181,10 +181,6 @@ export default function HomePage() {
               <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
               ChatGPT
             </Badge>
-            <Badge variant="outline" className="gap-1.5 px-3 py-1">
-              <span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />
-              Claude
-            </Badge>
           </div>
         </div>
 
@@ -196,7 +192,7 @@ export default function HomePage() {
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleExtract()}
-              placeholder="https://chatgpt.com/share/… or https://claude.ai/share/…"
+              placeholder="https://chatgpt.com/share/…"
               disabled={stage === 'scraping'}
               className="flex-1 h-11 text-sm"
             />
@@ -216,7 +212,7 @@ export default function HomePage() {
             </Button>
           </div>
           <p className="text-xs text-slate-400 mt-2">
-            Only public share links work — make sure &quot;Share&quot; is enabled in your chat.
+            Only public ChatGPT share links — make sure &quot;Share&quot; is enabled in your chat.
           </p>
         </div>
 
@@ -382,7 +378,7 @@ export default function HomePage() {
 
       <footer className="border-t border-slate-100 mt-16 py-6">
         <div className="max-w-4xl mx-auto px-6 flex items-center justify-between text-xs text-slate-400">
-          <span>NoteMarker AI — open source</span>
+          <span>NoteMarker AI — open source · ChatGPT share links only</span>
           <span>
             Built by{' '}
             <a

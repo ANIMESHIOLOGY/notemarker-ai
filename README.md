@@ -48,9 +48,10 @@ That's it. No account, no data stored, no rate limits on your end.
 | Platform | Link pattern |
 |---|---|
 | ChatGPT | `chatgpt.com/share/…` |
-| Claude | `claude.ai/share/…` |
 
 > The chat must be set to **public** before you share the link. Private links won't work.
+
+> Claude share links are blocked by Cloudflare's bot protection when accessed server-side and are not currently supported.
 
 ---
 

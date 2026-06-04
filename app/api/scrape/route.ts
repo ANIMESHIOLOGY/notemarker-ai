@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            'Only shared links from ChatGPT (chatgpt.com) or Claude (claude.ai) are supported.',
+            'Only shared links from ChatGPT (chatgpt.com) are supported.',
         },
         { status: 400 }
       );

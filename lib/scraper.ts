@@ -154,7 +154,7 @@ export function validateUrl(url: string): boolean {
     const { protocol, hostname } = new URL(url);
     return (
       protocol === 'https:' &&
-      ['chatgpt.com', 'chat.openai.com', 'claude.ai'].includes(hostname)
+      ['chatgpt.com', 'chat.openai.com'].includes(hostname)
     );
   } catch {
     return false;
