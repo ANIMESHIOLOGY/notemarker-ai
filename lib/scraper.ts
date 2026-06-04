@@ -1,8 +1,5 @@
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
-
-puppeteer.use(StealthPlugin());
 import { existsSync } from 'fs';
 import type { ChatDocument } from '@/types/chat';
 import { parseChatGPT } from './parsers/chatgpt';
@@ -46,6 +43,49 @@ async function getExecutablePath(): Promise<string> {
   return await chromium.executablePath();
 }
 
+// Manual stealth patches — avoids puppeteer-extra dependency issues on Vercel
+async function applyStealthPatches(page: Awaited<ReturnType<typeof puppeteer.launch>> extends infer B ? B extends { newPage(): Promise<infer P> } ? P : never : never): Promise<void> {
+  await page.evaluateOnNewDocument(() => {
+    // Hide webdriver flag
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+
+    // Add realistic chrome runtime object
+    (window as any).chrome = {
+      runtime: {
+        onMessage: { addListener: () => {}, removeListener: () => {} },
+        sendMessage: () => {},
+        connect: () => ({ onMessage: { addListener: () => {} }, postMessage: () => {} }),
+      },
+      loadTimes: () => ({}),
+      csi: () => ({}),
+    };
+
+    // Realistic plugin list
+    Object.defineProperty(navigator, 'plugins', {
+      get: () => {
+        const plugins = [
+          { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+          { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+          { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
+        ];
+        Object.defineProperty(plugins, 'item', { value: (i: number) => plugins[i] });
+        Object.defineProperty(plugins, 'namedItem', { value: (name: string) => plugins.find(p => p.name === name) ?? null });
+        return plugins;
+      },
+    });
+
+    // Realistic language list
+    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+
+    // Permissions API — prevent detection via notification permission query
+    const origQuery = window.navigator.permissions.query.bind(navigator.permissions);
+    (window.navigator.permissions as any).query = (params: PermissionDescriptor) =>
+      params.name === 'notifications'
+        ? Promise.resolve({ state: (Notification as any).permission, onchange: null } as PermissionStatus)
+        : origQuery(params);
+  });
+}
+
 export async function scrapeChat(url: string): Promise<ChatDocument> {
   const platform = detectPlatform(url);
   const executablePath = await getExecutablePath();
@@ -66,25 +106,23 @@ export async function scrapeChat(url: string): Promise<ChatDocument> {
   try {
     const page = await browser.newPage();
 
+    await applyStealthPatches(page);
+
+    // Use a current Chrome UA matching our chromium version
     await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'
     );
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
 
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
 
     if (platform === 'claude') {
-      // Wait for Cloudflare challenge to resolve then for conversation to appear
+      // Wait for Cloudflare challenge to clear and actual conversation to appear
       await page.waitForFunction(
-        () => {
-          const isCfChallenge = document.querySelector('#challenge-success-text, #cf-error-details');
-          const hasContent = document.querySelectorAll('[data-testid="human-turn"], [data-testid="ai-turn"], article').length > 0;
-          // If no CF challenge page at all, or content already loaded — proceed
-          return !document.querySelector('.ch-title-zone') || hasContent;
-        },
+        () => !document.querySelector('.ch-title-zone') ||
+          document.querySelectorAll('[data-testid="human-turn"], [data-testid="ai-turn"], article').length > 0,
         { timeout: 25000, polling: 1000 }
       ).catch(() => {});
-      // Extra settle time after CF passes
       await new Promise((r) => setTimeout(r, 3000));
     } else {
       await new Promise((r) => setTimeout(r, 2500));
