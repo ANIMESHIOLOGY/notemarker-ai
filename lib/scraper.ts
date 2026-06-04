@@ -21,21 +21,25 @@ const UNIX_CHROME_PATHS = [
   '/snap/bin/chromium',
 ];
 
+// Vercel's file tracer skips non-JS files, so the bin/*.br binaries are never
+// deployed. Pass the GitHub release URL instead — chromium downloads to /tmp on
+// cold start and reuses it on warm starts.
+const CHROMIUM_PACK_URL =
+  'https://github.com/Sparticuz/chromium/releases/download/v149.0.0/chromium-v149.0.0-pack.tar';
+
 async function getExecutablePath(): Promise<string> {
   if (process.env.CHROME_PATH && existsSync(process.env.CHROME_PATH)) {
     return process.env.CHROME_PATH;
   }
 
-  // On Vercel / Lambda environments, use @sparticuz/chromium
   if (process.env.VERCEL || process.env.AWS_EXECUTION_ENV || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    return await chromium.executablePath();
+    return await chromium.executablePath(CHROMIUM_PACK_URL);
   }
 
   const paths = process.platform === 'win32' ? WINDOWS_CHROME_PATHS : UNIX_CHROME_PATHS;
   const found = paths.find((p) => existsSync(p));
   if (found) return found;
 
-  // Fallback to @sparticuz/chromium for local too
   return await chromium.executablePath();
 }
 
